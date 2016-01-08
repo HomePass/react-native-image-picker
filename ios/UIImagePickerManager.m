@@ -291,8 +291,6 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
     else {
         self.callback(@[@NO, response]);
     }
-
-    self.callback(@[@NO, response]);
 }
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker
