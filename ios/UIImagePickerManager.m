@@ -1,6 +1,9 @@
 #import "UIImagePickerManager.h"
 #import "RCTConvert.h"
 
+#import <AssetsLibrary/AssetsLibrary.h>
+#import <MobileCoreServices/MobileCoreServices.h>
+
 @interface UIImagePickerManager ()
 
 @property (nonatomic, strong) UIAlertController *alertController;
