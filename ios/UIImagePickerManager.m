@@ -268,25 +268,45 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
 
     // Get asset properties if requested
     if ([self.options valueForKey:@"assetProperties"]) {
-        ALAssetsLibrary *assetslibrary = [ALAssetsLibrary new];
-        NSURL *refURL = [info valueForKey:UIImagePickerControllerReferenceURL];
-
-        [assetslibrary assetForURL:refURL resultBlock:^(ALAsset *asset) {
-            ALAssetRepresentation *assetRep = [asset defaultRepresentation];
-
-            NSString *MIMEType = (__bridge_transfer NSString *)UTTypeCopyPreferredTagWithClass((__bridge CFStringRef)[assetRep UTI], kUTTagClassMIMEType);
-
+        NSDictionary *metadata = [info valueForKey:UIImagePickerControllerMediaMetadata];
+        
+        if (metadata) {
+            NSString *mimeType = @"image/jpeg";
+            
             // Set the assetProperties and run the callback
             response[@"assetProperties"] = @{
-                @"fileName": [assetRep filename],
-                @"metadata": [assetRep metadata],
-                @"mimeType": MIMEType
+                @"mimeType": mimeType,
+                @"fileSize": @(data.length)
             };
-
+            
             self.callback(@[@NO, response]);
-        } failureBlock:^(NSError *error) {
-            self.callback(@[@NO, response]);
-        }];
+        }
+        else {
+            ALAssetsLibrary *assetslibrary = [ALAssetsLibrary new];
+            NSURL *refURL = [info valueForKey:UIImagePickerControllerReferenceURL];
+            
+            [assetslibrary assetForURL:refURL resultBlock:^(ALAsset *asset) {
+                if (asset) {
+                    ALAssetRepresentation *assetRep = [asset defaultRepresentation];
+                    
+                    if (assetRep) {
+                        NSString *MIMEType = (__bridge_transfer NSString *)UTTypeCopyPreferredTagWithClass((__bridge CFStringRef)[assetRep UTI], kUTTagClassMIMEType);
+                        
+                        // Set the assetProperties and run the callback
+                        response[@"assetProperties"] = @{
+                            @"fileName": ([assetRep filename] ? [assetRep filename] : [NSNull null]),
+                            @"metadata": ([assetRep metadata] ? [assetRep metadata] : [NSNull null]),
+                            @"mimeType": (MIMEType ? MIMEType : [NSNull null]),
+                            @"fileSize": @([assetRep size])
+                        };
+                    }
+                }
+                
+                self.callback(@[@NO, response]);
+            } failureBlock:^(NSError *error) {
+                self.callback(@[@NO, response]);
+            }];
+        }
     }
     else {
         self.callback(@[@NO, response]);
