@@ -1,5 +1,8 @@
 #import "UIImagePickerManager.h"
 #import "RCTConvert.h"
+#import <AssetsLibrary/AssetsLibrary.h>
+
+@import MobileCoreServices;
 
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <MobileCoreServices/MobileCoreServices.h>
@@ -59,75 +62,120 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
         title = nil; // A more visually appealing UIAlertControl is displayed with a nil title rather than title = @""
     }
 
-    self.alertController = [UIAlertController alertControllerWithTitle:title message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-
     NSString *cancelTitle = [self.options valueForKey:@"cancelButtonTitle"];
     if ([cancelTitle isEqual:[NSNull null]] || cancelTitle.length == 0) {
         cancelTitle = self.defaultOptions[@"cancelButtonTitle"]; // Don't allow null or empty string cancel button title
     }
-    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:cancelTitle style:UIAlertActionStyleCancel handler:^(UIAlertAction * action) {
-        self.callback(@[@YES, [NSNull null]]); // Return callback for 'cancel' action (if is required)
-    }];
-    [self.alertController addAction:cancelAction];
-
-
     NSString *takePhotoButtonTitle = [self.options valueForKey:@"takePhotoButtonTitle"];
     NSString *chooseFromLibraryButtonTitle = [self.options valueForKey:@"chooseFromLibraryButtonTitle"];
-    if (![takePhotoButtonTitle isEqual:[NSNull null]] && takePhotoButtonTitle.length > 0) {
-        UIAlertAction *takePhotoAction = [UIAlertAction actionWithTitle:takePhotoButtonTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * action) {
-            [self actionHandler:action];
-        }];
-        [self.alertController addAction:takePhotoAction];
-    }
-    if (![chooseFromLibraryButtonTitle isEqual:[NSNull null]] && chooseFromLibraryButtonTitle.length > 0) {
-        UIAlertAction *chooseFromLibraryAction = [UIAlertAction actionWithTitle:chooseFromLibraryButtonTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * action) {
-            [self actionHandler:action];
-        }];
-        [self.alertController addAction:chooseFromLibraryAction];
-    }
 
-    // Add custom buttons to action sheet
-    if([self.options objectForKey:@"customButtons"] && [[self.options objectForKey:@"customButtons"] isKindOfClass:[NSDictionary class]]){
-        self.customButtons = [self.options objectForKey:@"customButtons"];
-        for (NSString *key in self.customButtons) {
-            UIAlertAction *customAction = [UIAlertAction actionWithTitle:key style:UIAlertActionStyleDefault handler:^(UIAlertAction * action) {
+    if ([UIAlertController class] && [UIAlertAction class]) { // iOS 8+
+        self.alertController = [UIAlertController alertControllerWithTitle:title message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+
+        UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:cancelTitle style:UIAlertActionStyleCancel handler:^(UIAlertAction * action) {
+            self.callback(@[@{@"didCancel": @YES}]); // Return callback for 'cancel' action (if is required)
+        }];
+
+        [self.alertController addAction:cancelAction];
+
+        if (![takePhotoButtonTitle isEqual:[NSNull null]] && takePhotoButtonTitle.length > 0) {
+            UIAlertAction *takePhotoAction = [UIAlertAction actionWithTitle:takePhotoButtonTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * action) {
                 [self actionHandler:action];
             }];
-            [self.alertController addAction:customAction];
+            [self.alertController addAction:takePhotoAction];
         }
+        if (![chooseFromLibraryButtonTitle isEqual:[NSNull null]] && chooseFromLibraryButtonTitle.length > 0) {
+            UIAlertAction *chooseFromLibraryAction = [UIAlertAction actionWithTitle:chooseFromLibraryButtonTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction * action) {
+                [self actionHandler:action];
+            }];
+            [self.alertController addAction:chooseFromLibraryAction];
+        }
+
+        // Add custom buttons to action sheet
+        if ([self.options objectForKey:@"customButtons"] && [[self.options objectForKey:@"customButtons"] isKindOfClass:[NSDictionary class]]) {
+            self.customButtons = [self.options objectForKey:@"customButtons"];
+            for (NSString *key in self.customButtons) {
+                UIAlertAction *customAction = [UIAlertAction actionWithTitle:key style:UIAlertActionStyleDefault handler:^(UIAlertAction * action) {
+                    [self actionHandler:action];
+                }];
+                [self.alertController addAction:customAction];
+            }
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIViewController *root = [[[[UIApplication sharedApplication] delegate] window] rootViewController];
+            while (root.presentedViewController != nil) {
+                root = root.presentedViewController;
+            }
+
+            /* On iPad, UIAlertController presents a popover view rather than an action sheet like on iPhone. We must provide the location
+            of the location to show the popover in this case. For simplicity, we'll just display it on the bottom center of the screen
+            to mimic an action sheet */
+            self.alertController.popoverPresentationController.sourceView = root.view;
+            self.alertController.popoverPresentationController.sourceRect = CGRectMake(root.view.bounds.size.width / 2.0, root.view.bounds.size.height, 1.0, 1.0);
+
+            if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+                self.alertController.popoverPresentationController.permittedArrowDirections = 0;
+                for (id subview in self.alertController.view.subviews) {
+                    if ([subview isMemberOfClass:[UIView class]]) {
+                        ((UIView *)subview).backgroundColor = [UIColor whiteColor];
+                    }
+                }
+            }
+
+            [root presentViewController:self.alertController animated:YES completion:nil];
+        });
     }
+    else { // iOS 7 support
+        UIActionSheet *popup = [[UIActionSheet alloc] initWithTitle:title delegate:self cancelButtonTitle:cancelTitle destructiveButtonTitle:nil otherButtonTitles:takePhotoButtonTitle, chooseFromLibraryButtonTitle, nil];
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIViewController *root = [[[[UIApplication sharedApplication] delegate] window] rootViewController];
-        while (root.presentedViewController != nil) {
-          root = root.presentedViewController;
+        if ([self.options objectForKey:@"customButtons"] && [[self.options objectForKey:@"customButtons"] isKindOfClass:[NSDictionary class]]) {
+            self.customButtons = [self.options objectForKey:@"customButtons"];
+            for (NSString *key in self.customButtons) {
+                [popup addButtonWithTitle:key];
+            }
         }
 
-        /* On iPad, UIAlertController presents a popover view rather than an action sheet like on iPhone. We must provide the location
-           of the location to show the popover in this case. For simplicity, we'll just display it on the bottom center of the screen
-           to mimic an action sheet */
-        self.alertController.popoverPresentationController.sourceView = root.view;
-        self.alertController.popoverPresentationController.sourceRect = CGRectMake(root.view.bounds.size.width / 2.0, root.view.bounds.size.height, 1.0, 1.0);
-        [root presentViewController:self.alertController animated:YES completion:nil];
-    });
+        popup.tag = 1;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIViewController *root = [[[[UIApplication sharedApplication] delegate] window] rootViewController];
+            while (root.presentedViewController != nil) {
+                root = root.presentedViewController;
+            }
+            [popup showInView:root.view];
+        });
+    }
 }
 
-- (void)launchImagePicker:(RNImagePickerTarget)target options:(NSDictionary *)options
+// iOS 7 Handler
+- (void)actionSheet:(UIActionSheet *)popup clickedButtonAtIndex:(NSInteger)buttonIndex
 {
-    self.options = [NSMutableDictionary dictionaryWithDictionary:self.defaultOptions]; // Set default options
-    for (NSString *key in options.keyEnumerator) { // Replace default options
-        [self.options setValue:options[key] forKey:key];
+    if (popup.tag == 1) {
+        if (buttonIndex == [popup cancelButtonIndex]) {
+            self.callback(@[@{@"didCancel": @YES}]);
+            return;
+        }
+        switch (buttonIndex) {
+            case 0:
+                [self launchImagePicker:RNImagePickerTargetCamera];
+                break;
+            case 1:
+                [self launchImagePicker:RNImagePickerTargetLibrarySingleImage];
+                break;
+            default:
+                self.callback(@[@{@"customButton": [self.customButtons allKeys][buttonIndex - 2]}]);
+                break;
+        }
     }
-
-    [self launchImagePicker:target];
 }
 
+// iOS 8+ Handler
 - (void)actionHandler:(UIAlertAction *)action
 {
     // If button title is one of the keys in the customButtons dictionary return the value as a callback
     NSString *customButtonStr = [self.customButtons objectForKey:action.title];
     if (customButtonStr) {
-        self.callback(@[@NO, @{@"customButton": customButtonStr}]);
+        self.callback(@[@{@"customButton": customButtonStr}]);
         return;
     }
 
@@ -139,25 +187,52 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
     }
 }
 
+- (void)launchImagePicker:(RNImagePickerTarget)target options:(NSDictionary *)options
+{
+    self.options = [NSMutableDictionary dictionaryWithDictionary:self.defaultOptions]; // Set default options
+    for (NSString *key in options.keyEnumerator) { // Replace default options
+        [self.options setValue:options[key] forKey:key];
+    }
+    [self launchImagePicker:target];
+}
+
 - (void)launchImagePicker:(RNImagePickerTarget)target
 {
     self.picker = [[UIImagePickerController alloc] init];
 
-    switch(target) {
-        case RNImagePickerTargetCamera:
+    if (target == RNImagePickerTargetCamera) {
 #if TARGET_IPHONE_SIMULATOR
-            NSLog(@"Camera not available on simulator");
-            return;
+        self.callback(@[@{@"error": @"Camera not available on simulator"}]);
+        return;
 #else
-            self.picker.sourceType = UIImagePickerControllerSourceTypeCamera;
-            break;
+        self.picker.sourceType = UIImagePickerControllerSourceTypeCamera;
+        if ([[self.options objectForKey:@"cameraType"] isEqualToString:@"front"]) {
+            self.picker.cameraDevice = UIImagePickerControllerCameraDeviceFront;
+        }
+        else { // "back"
+            self.picker.cameraDevice = UIImagePickerControllerCameraDeviceRear;
+        }
 #endif
-        case RNImagePickerTargetLibrarySingleImage:
-            self.picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
-            break;
-        default:
-            NSLog(@"Well done: This shouldn't happen. Invalid ImagePicker target. Aborting...");
-            return;
+    }
+    else { // RNImagePickerTargetLibrarySingleImage
+        self.picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
+    }
+
+    if ([[self.options objectForKey:@"mediaType"] isEqualToString:@"video"]) {
+        self.picker.mediaTypes = @[(NSString *)kUTTypeMovie];
+
+        if ([[self.options objectForKey:@"videoQuality"] isEqualToString:@"high"]) {
+            self.picker.videoQuality = UIImagePickerControllerQualityTypeHigh;
+        }
+        else if ([[self.options objectForKey:@"videoQuality"] isEqualToString:@"low"]) {
+            self.picker.videoQuality = UIImagePickerControllerQualityTypeLow;
+        }
+        else {
+            self.picker.videoQuality = UIImagePickerControllerQualityTypeMedium;
+        }
+    }
+    else {
+        self.picker.mediaTypes = @[(NSString *)kUTTypeImage];
     }
 
     if ([[self.options objectForKey:@"allowsEditing"] boolValue]) {
@@ -166,14 +241,12 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
     self.picker.modalPresentationStyle = UIModalPresentationCurrentContext;
     self.picker.delegate = self;
 
-    UIViewController *root = [[[[UIApplication sharedApplication] delegate] window] rootViewController];
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (root.presentedViewController) {
-            [root.presentedViewController presentViewController:self.picker animated:YES completion:nil];
+        UIViewController *root = [[[[UIApplication sharedApplication] delegate] window] rootViewController];
+        while (root.presentedViewController != nil) {
+          root = root.presentedViewController;
         }
-        else {
-            [root presentViewController:self.picker animated:YES completion:nil];
-        }
+        [root presentViewController:self.picker animated:YES completion:nil];
     });
 }
 
@@ -183,84 +256,164 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
         [picker dismissViewControllerAnimated:YES completion:nil];
     });
 
-    /* Picked Image */
-    UIImage *image;
-    if ([[self.options objectForKey:@"allowsEditing"] boolValue]) {
-      image = [info objectForKey:UIImagePickerControllerEditedImage];
+    NSURL *imageURL = [info valueForKey:UIImagePickerControllerReferenceURL];
+    NSString *mediaType = [info objectForKey:UIImagePickerControllerMediaType];
+
+
+    NSString *fileName;
+    if ([mediaType isEqualToString:(NSString *)kUTTypeImage]) {
+        NSString *tempFileName = [[NSUUID UUID] UUIDString];
+        if (imageURL && [[imageURL absoluteString] rangeOfString:@"ext=GIF"].location != NSNotFound) {
+            fileName = [tempFileName stringByAppendingString:@".gif"];
+        }
+        else if ([[[self.options objectForKey:@"imageFileType"] stringValue] isEqualToString:@"png"]) {
+            fileName = [tempFileName stringByAppendingString:@".png"];
+        }
+        else {
+            fileName = [tempFileName stringByAppendingString:@".jpg"];
+        }
     }
     else {
-      image = [info objectForKey:UIImagePickerControllerOriginalImage];
+        NSURL *videoURL = info[UIImagePickerControllerMediaURL];
+        fileName = videoURL.lastPathComponent;
     }
 
-    /* creating a temp url to be passed */
-    NSString *ImageUUID = [[NSUUID UUID] UUIDString];
-    NSString *ImageName = [ImageUUID stringByAppendingString:@".jpg"];
+    // We default to path to the temporary directory
+    NSString *path = [[NSTemporaryDirectory()stringByStandardizingPath] stringByAppendingPathComponent:fileName];
 
-    // This will be the default URL
-    NSString* path = [[NSTemporaryDirectory()stringByStandardizingPath] stringByAppendingPathComponent:ImageName];
+    // If storage options are provided, we use the documents directory which is persisted
+    if ([self.options objectForKey:@"storageOptions"] && [[self.options objectForKey:@"storageOptions"] isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *storageOptions = [self.options objectForKey:@"storageOptions"];
 
-    NSDictionary *storageOptions;
-    // if storage options are provided change path to the documents directory
-    if([self.options objectForKey:@"storageOptions"] && [[self.options objectForKey:@"storageOptions"] isKindOfClass:[NSDictionary class]]){
-        // retrieve documents path
         NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         NSString *documentsDirectory = [paths objectAtIndex:0];
-        // update path to save image to documents directory
-        path = [documentsDirectory stringByAppendingPathComponent:ImageName];
+        path = [documentsDirectory stringByAppendingPathComponent:fileName];
 
-        storageOptions = [self.options objectForKey:@"storageOptions"];
-        // if extra path is provided try to create it
+        // Creates documents subdirectory, if provided
         if ([storageOptions objectForKey:@"path"]) {
             NSString *newPath = [documentsDirectory stringByAppendingPathComponent:[storageOptions objectForKey:@"path"]];
-            NSError *error = nil;
+            NSError *error;
             [[NSFileManager defaultManager] createDirectoryAtPath:newPath withIntermediateDirectories:YES attributes:nil error:&error];
 
-            // if there was an error do not update path
-            if (error != nil) {
-                NSLog(@"error creating directory: %@", error);
+            if (error) {
+                NSLog(@"Error creating documents subdirectory: %@", error);
+                self.callback(@[@{@"error": error.localizedFailureReason}]);
+                return;
             }
             else {
-                path = [newPath stringByAppendingPathComponent:ImageName];
+                path = [newPath stringByAppendingPathComponent:fileName];
             }
         }
     }
 
-
-
-    // Rotate the image for upload to web
-    image = [self fixOrientation:image];
-
-    //If needed, downscale image
-    float maxWidth = image.size.width;
-    float maxHeight = image.size.height;
-    if ([self.options valueForKey:@"maxWidth"]) {
-        maxWidth = [[self.options valueForKey:@"maxWidth"] floatValue];
-    }
-    if ([self.options valueForKey:@"maxHeight"]) {
-        maxHeight = [[self.options valueForKey:@"maxHeight"] floatValue];
-    }
-    image = [self downscaleImageIfNecessary:image maxWidth:maxWidth maxHeight:maxHeight];
-
     // Create the response object
     NSMutableDictionary *response = [[NSMutableDictionary alloc] init];
 
-    [response setObject:@(maxWidth) forKey:@"width"];
-    [response setObject:@(maxHeight) forKey:@"height"];
+    if ([mediaType isEqualToString:(NSString *)kUTTypeImage]) { // PHOTOS
+        UIImage *image;
+        if ([[self.options objectForKey:@"allowsEditing"] boolValue]) {
+            image = [info objectForKey:UIImagePickerControllerEditedImage];
+        }
+        else {
+            image = [info objectForKey:UIImagePickerControllerOriginalImage];
+        }
 
-    NSData *data = UIImageJPEGRepresentation(image, [[self.options valueForKey:@"quality"] floatValue]);
-    // base64 encoded image string, unless the caller doesn't want it
-    if (![[self.options objectForKey:@"noData"] boolValue]) {
-        NSString *dataString = [data base64EncodedStringWithOptions:0];
-        [response setObject:dataString forKey:@"data"];
+        // GIFs break when resized, so we handle them differently
+        if (imageURL && [[imageURL absoluteString] rangeOfString:@"ext=GIF"].location != NSNotFound) {
+            ALAssetsLibrary* assetsLibrary = [[ALAssetsLibrary alloc] init];
+            [assetsLibrary assetForURL:imageURL resultBlock:^(ALAsset *asset) {
+                ALAssetRepresentation *rep = [asset defaultRepresentation];
+                Byte *buffer = (Byte*)malloc(rep.size);
+                NSUInteger buffered = [rep getBytes:buffer fromOffset:0.0 length:rep.size error:nil];
+                NSData *data = [NSData dataWithBytesNoCopy:buffer length:buffered freeWhenDone:YES];
+                [data writeToFile:path atomically:YES];
+
+                NSMutableDictionary *response = [[NSMutableDictionary alloc] init];
+                [response setObject:@(image.size.width) forKey:@"width"];
+                [response setObject:@(image.size.height) forKey:@"height"];
+
+                BOOL vertical = (image.size.width < image.size.height) ? YES : NO;
+                [response setObject:@(vertical) forKey:@"isVertical"];
+
+                if (![[self.options objectForKey:@"noData"] boolValue]) {
+                    NSString *dataString = [data base64EncodedStringWithOptions:0];
+                    [response setObject:dataString forKey:@"data"];
+                }
+
+                NSString *fileURL = [[NSURL fileURLWithPath:path] absoluteString];
+                [response setObject:fileURL forKey:@"uri"];
+
+                self.callback(@[response]);
+            } failureBlock:^(NSError *error) {
+                self.callback(@[@{@"error": error.localizedFailureReason}]);
+            }];
+            return;
+        }
+
+        image = [self fixOrientation:image];  // Rotate the image for upload to web
+
+        // If needed, downscale image
+        float maxWidth = image.size.width;
+        float maxHeight = image.size.height;
+        if ([self.options valueForKey:@"maxWidth"]) {
+            maxWidth = [[self.options valueForKey:@"maxWidth"] floatValue];
+        }
+        if ([self.options valueForKey:@"maxHeight"]) {
+            maxHeight = [[self.options valueForKey:@"maxHeight"] floatValue];
+        }
+        image = [self downscaleImageIfNecessary:image maxWidth:maxWidth maxHeight:maxHeight];
+
+        NSData *data;
+        if ([[[self.options objectForKey:@"imageFileType"] stringValue] isEqualToString:@"png"]) {
+            data = UIImagePNGRepresentation(image);
+        }
+        else {
+            data = UIImageJPEGRepresentation(image, [[self.options valueForKey:@"quality"] floatValue]);
+        }
+        [data writeToFile:path atomically:YES];
+
+        if (![[self.options objectForKey:@"noData"] boolValue]) {
+            NSString *dataString = [data base64EncodedStringWithOptions:0]; // base64 encoded image string
+            [response setObject:dataString forKey:@"data"];
+        }
+
+        BOOL vertical = (image.size.width < image.size.height) ? YES : NO;
+        [response setObject:@(vertical) forKey:@"isVertical"];
+
+        NSString *filePath = [[NSURL fileURLWithPath:path] absoluteString];
+        [response setObject:filePath forKey:@"uri"];
+
+        [response setObject:@(image.size.width) forKey:@"width"];
+        [response setObject:@(image.size.height) forKey:@"height"];
+    }
+    else { // VIDEO
+        NSURL *videoURL = info[UIImagePickerControllerMediaURL];
+        NSURL *videoDestinationURL = [NSURL fileURLWithPath:path];
+
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        if ([fileName isEqualToString:@"capturedvideo.MOV"]) {
+            if ([fileManager fileExistsAtPath:videoDestinationURL.path]) {
+                [fileManager removeItemAtURL:videoDestinationURL error:nil];
+            }
+        }
+        NSError *error = nil;
+        [fileManager moveItemAtURL:videoURL toURL:videoDestinationURL error:&error];
+        if (error) {
+            self.callback(@[@{@"error": error.localizedFailureReason}]);
+            return;
+        }
+
+        [response setObject:videoDestinationURL.absoluteString forKey:@"uri"];
     }
 
-    // file uri
-    [data writeToFile:path atomically:YES];
-    NSString *fileURL = [[NSURL fileURLWithPath:path] absoluteString];
-    if ([[storageOptions objectForKey:@"skipBackup"] boolValue]) {
-        [self addSkipBackupAttributeToItemAtPath:path];
+    // If storage options are provided, check the skipBackup flag
+    if ([self.options objectForKey:@"storageOptions"] && [[self.options objectForKey:@"storageOptions"] isKindOfClass:[NSDictionary class]]) {
+      NSDictionary *storageOptions = [self.options objectForKey:@"storageOptions"];
+
+      if ([[storageOptions objectForKey:@"skipBackup"] boolValue]) {
+        [self addSkipBackupAttributeToItemAtPath:path]; // Don't back up the file to iCloud
+      }
     }
-    [response setObject:fileURL forKey:@"uri"];
 
     // image orientation
     BOOL vertical = (image.size.width < image.size.height) ? YES : NO;
@@ -269,29 +422,29 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
     // Get asset properties if requested
     if ([self.options valueForKey:@"assetProperties"]) {
         NSDictionary *metadata = [info valueForKey:UIImagePickerControllerMediaMetadata];
-        
+
         if (metadata) {
             NSString *mimeType = @"image/jpeg";
-            
+
             // Set the assetProperties and run the callback
             response[@"assetProperties"] = @{
                 @"mimeType": mimeType,
                 @"fileSize": @(data.length)
             };
-            
+
             self.callback(@[@NO, response]);
         }
         else {
             ALAssetsLibrary *assetslibrary = [ALAssetsLibrary new];
             NSURL *refURL = [info valueForKey:UIImagePickerControllerReferenceURL];
-            
+
             [assetslibrary assetForURL:refURL resultBlock:^(ALAsset *asset) {
                 if (asset) {
                     ALAssetRepresentation *assetRep = [asset defaultRepresentation];
-                    
+
                     if (assetRep) {
                         NSString *MIMEType = (__bridge_transfer NSString *)UTTypeCopyPreferredTagWithClass((__bridge CFStringRef)[assetRep UTI], kUTTagClassMIMEType);
-                        
+
                         // Set the assetProperties and run the callback
                         response[@"assetProperties"] = @{
                             @"fileName": ([assetRep filename] ? [assetRep filename] : [NSNull null]),
@@ -301,7 +454,7 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
                         };
                     }
                 }
-                
+
                 self.callback(@[@NO, response]);
             } failureBlock:^(NSError *error) {
                 self.callback(@[@NO, response]);
@@ -319,7 +472,7 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
         [picker dismissViewControllerAnimated:YES completion:nil];
     });
 
-    self.callback(@[@YES, [NSNull null]]);
+    self.callback(@[@{@"didCancel": @YES}]);
 }
 
 - (UIImage*)downscaleImageIfNecessary:(UIImage*)image maxWidth:(float)maxWidth maxHeight:(float)maxHeight
