@@ -308,6 +308,7 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
 
     // Create the response object
     NSMutableDictionary *response = [[NSMutableDictionary alloc] init];
+    CGFloat fileSize = -1;
 
     if ([mediaType isEqualToString:(NSString *)kUTTypeImage]) { // PHOTOS
         UIImage *image;
@@ -371,6 +372,7 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
             data = UIImageJPEGRepresentation(image, [[self.options valueForKey:@"quality"] floatValue]);
         }
         [data writeToFile:path atomically:YES];
+        fileSize = data.length;
 
         if (![[self.options objectForKey:@"noData"] boolValue]) {
             NSString *dataString = [data base64EncodedStringWithOptions:0]; // base64 encoded image string
@@ -415,10 +417,6 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
       }
     }
 
-    // image orientation
-    BOOL vertical = (image.size.width < image.size.height) ? YES : NO;
-    [response setObject:@(vertical) forKey:@"isVertical"];
-
     // Get asset properties if requested
     if ([self.options valueForKey:@"assetProperties"]) {
         NSDictionary *metadata = [info valueForKey:UIImagePickerControllerMediaMetadata];
@@ -429,10 +427,10 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
             // Set the assetProperties and run the callback
             response[@"assetProperties"] = @{
                 @"mimeType": mimeType,
-                @"fileSize": @(data.length)
+                @"fileSize": @(fileSize)
             };
 
-            self.callback(@[@NO, response]);
+            self.callback(@[response]);
         }
         else {
             ALAssetsLibrary *assetslibrary = [ALAssetsLibrary new];
@@ -455,14 +453,15 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
                     }
                 }
 
-                self.callback(@[@NO, response]);
+                self.callback(@[response]);
             } failureBlock:^(NSError *error) {
-                self.callback(@[@NO, response]);
+                // Ignore the error and return the response (the image is fine, we just couldn't get any assetProperties)
+                self.callback(@[response]);
             }];
         }
     }
     else {
-        self.callback(@[@NO, response]);
+        self.callback(@[response]);
     }
 }
 
