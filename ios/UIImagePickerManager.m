@@ -1,5 +1,6 @@
 #import "UIImagePickerManager.h"
 #import "RCTConvert.h"
+#import "RCTUtils.h"
 #import <AssetsLibrary/AssetsLibrary.h>
 
 @import MobileCoreServices;
@@ -103,7 +104,7 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
-            UIViewController *root = [[[[UIApplication sharedApplication] delegate] window] rootViewController];
+            UIViewController *root = [[[RCTSharedApplication() delegate] window] rootViewController];
             while (root.presentedViewController != nil) {
                 root = root.presentedViewController;
             }
@@ -126,25 +127,25 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
             [root presentViewController:self.alertController animated:YES completion:nil];
         });
     }
-    else { // iOS 7 support
-        UIActionSheet *popup = [[UIActionSheet alloc] initWithTitle:title delegate:self cancelButtonTitle:cancelTitle destructiveButtonTitle:nil otherButtonTitles:takePhotoButtonTitle, chooseFromLibraryButtonTitle, nil];
-
-        if ([self.options objectForKey:@"customButtons"] && [[self.options objectForKey:@"customButtons"] isKindOfClass:[NSDictionary class]]) {
-            self.customButtons = [self.options objectForKey:@"customButtons"];
-            for (NSString *key in self.customButtons) {
-                [popup addButtonWithTitle:key];
-            }
-        }
-
-        popup.tag = 1;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            UIViewController *root = [[[[UIApplication sharedApplication] delegate] window] rootViewController];
-            while (root.presentedViewController != nil) {
-                root = root.presentedViewController;
-            }
-            [popup showInView:root.view];
-        });
-    }
+    //    else { // iOS 7 support
+    //        UIActionSheet *popup = [[UIActionSheet alloc] initWithTitle:title delegate:self cancelButtonTitle:cancelTitle destructiveButtonTitle:nil otherButtonTitles:takePhotoButtonTitle, chooseFromLibraryButtonTitle, nil];
+    //
+    //        if ([self.options objectForKey:@"customButtons"] && [[self.options objectForKey:@"customButtons"] isKindOfClass:[NSDictionary class]]) {
+    //            self.customButtons = [self.options objectForKey:@"customButtons"];
+    //            for (NSString *key in self.customButtons) {
+    //                [popup addButtonWithTitle:key];
+    //            }
+    //        }
+    //
+    //        popup.tag = 1;
+    //        dispatch_async(dispatch_get_main_queue(), ^{
+    //            UIViewController *root = [[[RCTSharedApplication() delegate] window] rootViewController];
+    //            while (root.presentedViewController != nil) {
+    //                root = root.presentedViewController;
+    //            }
+    //            [popup showInView:root.view];
+    //        });
+    //    }
 }
 
 // iOS 7 Handler
@@ -242,7 +243,7 @@ RCT_EXPORT_METHOD(showImagePicker:(NSDictionary *)options callback:(RCTResponseS
     self.picker.delegate = self;
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIViewController *root = [[[[UIApplication sharedApplication] delegate] window] rootViewController];
+        UIViewController *root = [[[RCTSharedApplication() delegate] window] rootViewController];
         while (root.presentedViewController != nil) {
           root = root.presentedViewController;
         }
